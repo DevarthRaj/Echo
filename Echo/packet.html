@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Audio Packet Design</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: #0f1117;
+            color: #e0e0e0;
+            padding: 30px;
+        }
+
+        h1 {
+            font-size: 1.4rem;
+            color: #7eb8f7;
+            margin-bottom: 6px;
+        }
+
+        .subtitle {
+            font-size: 0.85rem;
+            color: #888;
+            margin-bottom: 28px;
+        }
+
+        /* ── Packet row ── */
+        .packet-wrap {
+            margin-bottom: 32px;
+        }
+
+        .packet-label {
+            font-size: 0.78rem;
+            color: #aaa;
+            margin-bottom: 8px;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+
+        .packet-row {
+            display: flex;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid #2a2d3a;
+            height: 64px;
+        }
+
+        .field {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.72rem;
+            border-right: 1px solid #1a1d26;
+            transition: opacity 0.3s;
+            cursor: default;
+            position: relative;
+        }
+
+        .field:last-child {
+            border-right: none;
+        }
+
+        .field .fname {
+            font-weight: 600;
+            font-size: 0.75rem;
+        }
+
+        .field .fbytes {
+            font-size: 0.65rem;
+            color: rgba(255, 255, 255, 0.5);
+            margin-top: 2px;
+        }
+
+        .field .fpct {
+            position: absolute;
+            bottom: 4px;
+            font-size: 0.6rem;
+            color: rgba(255, 255, 255, 0.35);
+        }
+
+        .field.removed {
+            opacity: 0.18;
+            text-decoration: line-through;
+        }
+
+        .field.shrunk {
+            outline: 2px dashed #f0c040;
+            outline-offset: -2px;
+        }
+
+        /* colours */
+        .c-seq {
+            background: #1e3a5f;
+        }
+
+        .c-ts {
+            background: #1a3d2e;
+        }
+
+        .c-ns {
+            background: #3d2a1a;
+        }
+
+        .c-sr {
+            background: #2d1a3d;
+        }
+
+        .c-pcm {
+            background: #1c1c3a;
+        }
+
+        .c-seq-opt {
+            background: #1e3a5f;
+        }
+
+        .c-ts-opt {
+            background: #1a3d2e;
+        }
+
+        .c-pcm-opt {
+            background: #1c1c3a;
+        }
+
+        /* ── Byte ruler ── */
+        .ruler {
+            display: flex;
+            font-size: 0.6rem;
+            color: #555;
+            margin-top: 4px;
+            padding-left: 2px;
+            gap: 0;
+        }
+
+        .ruler span {
+            min-width: 12px;
+            text-align: center;
+        }
+
+        /* ── Stats grid ── */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+
+        .stat-card {
+            background: #161820;
+            border: 1px solid #2a2d3a;
+            border-radius: 10px;
+            padding: 16px 20px;
+        }
+
+        .stat-card h3 {
+            font-size: 0.78rem;
+            color: #888;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+
+        .stat-row .sname {
+            font-size: 0.8rem;
+            color: #bbb;
+        }
+
+        .stat-row .sval {
+            font-size: 0.85rem;
+            font-weight: 700;
+        }
+
+        .good {
+            color: #4caf82;
+        }
+
+        .warn {
+            color: #f0c040;
+        }
+
+        .bad {
+            color: #e05555;
+        }
+
+        /* ── Field legend ── */
+        .legend {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 32px;
+        }
+
+        .legend-item {
+            background: #161820;
+            border: 1px solid #2a2d3a;
+            border-radius: 8px;
+            padding: 12px 14px;
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+        }
+
+        .dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 3px;
+            margin-top: 3px;
+            flex-shrink: 0;
+        }
+
+        .legend-item .lname {
+            font-size: 0.8rem;
+            font-weight: 600;
+            margin-bottom: 2px;
+        }
+
+        .legend-item .ldesc {
+            font-size: 0.72rem;
+            color: #888;
+            line-height: 1.4;
+        }
+
+        .tag {
+            display: inline-block;
+            font-size: 0.6rem;
+            padding: 1px 6px;
+            border-radius: 4px;
+            margin-left: 6px;
+            vertical-align: middle;
+            font-weight: 600;
+        }
+
+        .tag-keep {
+            background: #1a3d1a;
+            color: #4caf82;
+        }
+
+        .tag-shrink {
+            background: #3d3010;
+            color: #f0c040;
+        }
+
+        .tag-drop {
+            background: #3d1010;
+            color: #e05555;
+        }
+
+        /* ── Section title ── */
+        .section-title {
+            font-size: 0.85rem;
+            color: #7eb8f7;
+            margin-bottom: 14px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid #2a2d3a;
+            letter-spacing: 0.04em;
+        }
+
+        /* ── Comparison bar ── */
+        .compare-wrap {
+            margin-bottom: 32px;
+        }
+
+        .bar-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 10px;
+        }
+
+        .bar-label {
+            font-size: 0.75rem;
+            color: #aaa;
+            width: 90px;
+            text-align: right;
+            flex-shrink: 0;
+        }
+
+        .bar-outer {
+            flex: 1;
+            background: #1a1d26;
+            border-radius: 4px;
+            height: 28px;
+            overflow: hidden;
+        }
+
+        .bar-inner {
+            height: 100%;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            padding-left: 10px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            transition: width 1s ease;
+        }
+
+        .bar-val {
+            font-size: 0.75rem;
+            color: #888;
+            width: 60px;
+        }
+
+        .b-orig {
+            background: linear-gradient(90deg, #1e3a6e, #2a5298);
+        }
+
+        .b-opt {
+            background: linear-gradient(90deg, #1a4d2e, #27803d);
+        }
+
+        /* ── Latency breakdown ── */
+        .latency-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 32px;
+        }
+
+        .latency-table th {
+            font-size: 0.72rem;
+            color: #888;
+            text-align: left;
+            padding: 6px 10px;
+            border-bottom: 1px solid #2a2d3a;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .latency-table td {
+            font-size: 0.78rem;
+            padding: 8px 10px;
+            border-bottom: 1px solid #1a1d26;
+        }
+
+        .latency-table tr:last-child td {
+            font-weight: 700;
+            border-top: 1px solid #2a2d3a;
+            border-bottom: none;
+        }
+
+        .change {
+            font-size: 0.7rem;
+        }
+
+        .down {
+            color: #4caf82;
+        }
+
+        .same {
+            color: #888;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>🎙️ Audio Packet Design</h1>
+    <p class="subtitle">Visual breakdown · size analysis · optimisation</p>
+
+    <!-- ══════════════════════════════════════════════
+     CURRENT PACKET
+════════════════════════════════════════════════ -->
+    <div class="packet-wrap">
+        <div class="packet-label">Current packet — 336 bytes per frame (10 ms of audio)</div>
+        <div class="packet-row">
+            <!-- seq 4B = 4/336 = 1.2% -->
+            <div class="field c-seq" style="width:1.2%">
+                <span class="fname">SEQ</span>
+                <span class="fbytes">4B</span>
+            </div>
+            <!-- ts 8B = 2.4% -->
+            <div class="field c-ts" style="width:2.4%">
+                <span class="fname">TS</span>
+                <span class="fbytes">8B</span>
+            </div>
+            <!-- ns 2B -->
+            <div class="field c-ns" style="width:0.6%">
+                <span class="fname">NS</span>
+                <span class="fbytes">2B</span>
+            </div>
+            <!-- sr 2B -->
+            <div class="field c-sr" style="width:0.6%">
+                <span class="fname">SR</span>
+                <span class="fbytes">2B</span>
+            </div>
+            <!-- PCM 320B = 95.2% -->
+            <div class="field c-pcm" style="width:95.2%">
+                <span class="fname">PCM Audio Payload</span>
+                <span class="fbytes">320 bytes · 160 samples × int16</span>
+                <span class="fpct">95.2% of packet</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════
+     OPTIMISED PACKET
+════════════════════════════════════════════════ -->
+    <div class="packet-wrap">
+        <div class="packet-label">Optimised packet — 324 bytes per frame <span style="color:#4caf82">▼ 12 bytes saved
+                (3.6%)</span></div>
+        <div class="packet-row">
+            <!-- seq shrunk to 2B -->
+            <div class="field c-seq-opt shrunk" style="width:0.6%">
+                <span class="fname">SEQ</span>
+                <span class="fbytes">2B</span>
+            </div>
+            <!-- ts shrunk to 4B -->
+            <div class="field c-ts-opt shrunk" style="width:1.2%">
+                <span class="fname">TS</span>
+                <span class="fbytes">4B</span>
+            </div>
+            <!-- NS removed -->
+            <div class="field c-ns removed" style="width:0.6%">
+                <span class="fname">NS</span>
+                <span class="fbytes">dropped</span>
+            </div>
+            <!-- SR removed -->
+            <div class="field c-sr removed" style="width:0.6%">
+                <span class="fname">SR</span>
+                <span class="fbytes">dropped</span>
+            </div>
+            <!-- PCM same -->
+            <div class="field c-pcm" style="width:97%">
+                <span class="fname">PCM Audio Payload</span>
+                <span class="fbytes">320 bytes · unchanged</span>
+                <span class="fpct">98.8% of packet</span>
+            </div>
+        </div>
+        <div style="font-size:0.68rem; color:#666; margin-top:6px;">
+            <span style="border:1px dashed #f0c040; padding:1px 5px; border-radius:3px; color:#f0c040;">dashed outline =
+                shrunk field</span>
+            &nbsp;
+            <span style="opacity:0.4; padding:1px 5px;">faded = dropped field</span>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════
+     SIZE COMPARISON BARS
+════════════════════════════════════════════════ -->
+    <div class="compare-wrap">
+        <div class="section-title">Packet size comparison</div>
+        <div class="bar-row">
+            <div class="bar-label">Current</div>
+            <div class="bar-outer">
+                <div class="bar-inner b-orig" style="width:100%">336 bytes total &nbsp;·&nbsp; 16B header + 320B audio
+                </div>
+            </div>
+            <div class="bar-val">336 B</div>
+        </div>
+        <div class="bar-row">
+            <div class="bar-label">Optimised</div>
+            <div class="bar-outer">
+                <div class="bar-inner b-opt" style="width:96.4%">324 bytes total &nbsp;·&nbsp; 6B header + 320B audio
+                </div>
+            </div>
+            <div class="bar-val" style="color:#4caf82">324 B</div>
+        </div>
+        <div class="bar-row">
+            <div class="bar-label">Theoretical min</div>
+            <div class="bar-outer">
+                <div class="bar-inner" style="width:95.2%; background:linear-gradient(90deg,#3d1a1a,#7a2020)">320 bytes
+                    — zero header, payload only</div>
+            </div>
+            <div class="bar-val" style="color:#e05555">320 B</div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════
+     FIELD LEGEND
+════════════════════════════════════════════════ -->
+    <div class="section-title">Field-by-field analysis</div>
+    <div class="legend">
+
+        <div class="legend-item">
+            <div class="dot" style="background:#2a5298"></div>
+            <div>
+                <div class="lname">SEQ — Sequence Number <span class="tag tag-shrink">shrink 4B→2B</span></div>
+                <div class="ldesc">Detects lost/out-of-order packets. 4 bytes supports 4 billion packets = 40,000
+                    seconds at 100 pkt/s. You only need 2 bytes (65535 wrap-around every ~109 minutes). Safe to halve.
+                </div>
+            </div>
+        </div>
+
+        <div class="legend-item">
+            <div class="dot" style="background:#27803d"></div>
+            <div>
+                <div class="lname">TS — Timestamp µs <span class="tag tag-shrink">shrink 8B→4B</span></div>
+                <div class="ldesc">Used for delay measurement. 8 bytes stores absolute epoch time. A 4B relative
+                    timestamp (ms since session start) is enough — gives 49 days of range. Saves 4 bytes per packet.
+                </div>
+            </div>
+        </div>
+
+        <div class="legend-item">
+            <div class="dot" style="background:#7a4010"></div>
+            <div>
+                <div class="lname">NS — Num Samples <span class="tag tag-drop">drop</span></div>
+                <div class="ldesc">Tells receiver how many samples are in payload. But since frame size is fixed at 160
+                    samples (agreed at startup), receiver can infer it from UDP packet length. Redundant — safe to
+                    remove.</div>
+            </div>
+        </div>
+
+        <div class="legend-item">
+            <div class="dot" style="background:#5a2a7a"></div>
+            <div>
+                <div class="lname">SR — Sample Rate <span class="tag tag-drop">drop</span></div>
+                <div class="ldesc">Carries 16000 in every single packet — same value every time. This never changes
+                    during a session. Move it to a one-time handshake UDP message at connect. Completely eliminates 2B
+                    per packet.</div>
+            </div>
+        </div>
+
+        <div class="legend-item" style="grid-column: span 2;">
+            <div class="dot" style="background:#2a2a5a"></div>
+            <div>
+                <div class="lname">PCM Payload — 320 bytes <span class="tag tag-keep">keep as-is</span></div>
+                <div class="ldesc">160 samples × 2 bytes = 320 bytes. This IS the audio. You cannot reduce this without
+                    compression (e.g. µ-law, ADPCM, Opus). For this prototype, raw PCM is correct — compression adds CPU
+                    overhead and complexity with diminishing returns on localhost. If you needed to go over a
+                    low-bandwidth WAN, replacing int16 PCM with 8-bit µ-law would halve the payload to 160 bytes.</div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ══════════════════════════════════════════════
+     LATENCY BREAKDOWN
+════════════════════════════════════════════════ -->
+    <div class="section-title">Latency breakdown & reduction</div>
+    <table class="latency-table">
+        <tr>
+            <th>Source</th>
+            <th>Previous</th>
+            <th>Optimised</th>
+            <th>How to reduce</th>
+        </tr>
+        <tr>
+            <td>Audio frame duration</td>
+            <td>10 ms</td>
+            <td class="warn">5 ms</td>
+            <td class="change down">Halve PACKET_FRAME_SIZE to 80 samples. More packets/sec but lower latency.</td>
+        </tr>
+        <tr>
+            <td>PortAudio input latency</td>
+            <td>~8 ms</td>
+            <td class="warn">~4 ms</td>
+            <td class="change down">Use <code>defaultLowInputLatency</code> and smaller buffer size.</td>
+        </tr>
+        <tr>
+            <td>UDP transmission (localhost)</td>
+            <td>~0.2 ms</td>
+            <td class="good">~0.2 ms</td>
+            <td class="change same">Already near zero on loopback. Nothing to do.</td>
+        </tr>
+        <tr>
+            <td>Receiver priming buffer</td>
+            <td>20 ms (2 frames)</td>
+            <td class="warn">10 ms (2 frames)</td>
+            <td class="change down">Automatically halves when frame size halves.</td>
+        </tr>
+        <tr>
+            <td>PortAudio output latency</td>
+            <td>~10 ms</td>
+            <td class="warn">~5 ms</td>
+            <td class="change down">Use <code>defaultLowOutputLatency</code> instead of High.</td>
+        </tr>
+        <tr>
+            <td><strong>Total estimated</strong></td>
+            <td><strong>~48 ms</strong></td>
+            <td class="good"><strong>~24 ms</strong></td>
+            <td class="change down"><strong>~50% reduction achievable</strong></td>
+        </tr>
+    </table>
+
+    <!-- ══════════════════════════════════════════════
+     STATS
+════════════════════════════════════════════════ -->
+    <div class="section-title">Your measured results vs thresholds</div>
+    <div class="stats-grid">
+        <div class="stat-card">
+            <h3>Measured (your run)</h3>
+            <div class="stat-row"><span class="sname">Avg delay</span><span class="sval good">~0.23 ms</span></div>
+            <div class="stat-row"><span class="sname">Max delay (spike)</span><span class="sval warn">38.97 ms</span>
+            </div>
+            <div class="stat-row"><span class="sname">Packet loss</span><span class="sval good">0%</span></div>
+            <div class="stat-row"><span class="sname">Total packets</span><span class="sval good">2000</span></div>
+        </div>
+        <div class="stat-card">
+            <h3>Industry thresholds</h3>
+            <div class="stat-row"><span class="sname">Interactive audio limit</span><span class="sval">150 ms</span>
+            </div>
+            <div class="stat-row"><span class="sname">Broadcast quality</span><span class="sval">
+                    < 40 ms</span>
+            </div>
+            <div class="stat-row"><span class="sname">Professional real-time</span><span class="sval">
+                    < 10 ms</span>
+            </div>
+            <div class="stat-row"><span class="sname">Your rating</span><span class="sval good">✓ Broadcast
+                    quality</span></div>
+        </div>
+    </div>
+
+</body>
+
+</html>
