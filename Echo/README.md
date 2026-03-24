@@ -5,7 +5,7 @@ No external libraries beyond PortAudio. Just raw UDP sockets.
 
 ---
 
-## Prerequisites — install once in MSYS2 UCRT64 shell
+## Prerequisites — install once in MSYS2 MINGW64 shell
 
 ```bash
 pacman -S mingw-w64-ucrt-x86_64-gcc
